@@ -996,21 +996,55 @@ export function createGateway(options = {}) {
     if (await honours(passFrom(request))) return null;
     if ((await authenticated(request)) === true) return null;
     if (isWelcome(request)) return null;
+
+    /*
+     * People are not the swarm (0.19). Until now a surge sold a pass to every
+     * anonymous page load, so on any site with real traffic (the default trips
+     * at one page a second) people were asked to pay for as long as the site
+     * was busy: saasrow 2026-11-25, every visitor in every browser, Tron on
+     * KDE included. A browser that has passed the challenge today (a second of
+     * script, once a day per address) reads, and is not counted toward the
+     * surge either, or its own reading would keep the surge on. One that has
+     * not is asked to pass it instead of being sold a pass. The swarm that
+     * rotates its address every page pays the challenge on every page, which
+     * is what the challenge is for; an address reading heavily is still sold
+     * a pass whatever it has proved.
+     */
+    const ip = clientIp(request);
+    const proof = surgeChallenge();
+    const proven = Boolean(proof && ip && (await passedChallenge(request, { secret, cookie: proof.cookie, ip, work: proof.work, css: Boolean(proof.cssPath) })));
+
+    let heavy = false;
+    if (o.massScrape.perAddress) {
+      const usage = ip ? await spend(o.massScrape.perAddress, `mass:${ip}`) : null;
+      heavy = Boolean(usage?.overLimit);
+    }
+    if (proven && !heavy) return null;
+
     const seen = mass.hit();
     if (seen.tripped && o.massScrape.onChange) {
       try {
         o.massScrape.onChange(mass.state());
       } catch {}
     }
-    let heavy = false;
-    if (o.massScrape.perAddress) {
-      const ip = clientIp(request);
-      const usage = ip ? await spend(o.massScrape.perAddress, `mass:${ip}`) : null;
-      heavy = Boolean(usage?.overLimit);
-    }
     if (!seen.on && !heavy) return null;
     massReport?.count(path);
+    if (seen.on && !heavy && proof && ip && wantsHtml(request.headers.get('accept'))) {
+      const token = await challengeToken(secret, ip);
+      return html(challengePage({ token, cookie: proof.cookie, buyUrl, work: proof.work, cssPath: proof.cssPath }), 402, required(1));
+    }
     return sell(request, { mass: { heavy, surge: seen.on } });
+  }
+
+  /**
+   * The challenge a surge asks browsers to pass: the site's own when it has
+   * one, else a script with 16 bits of proof of work. Null without a secret to
+   * sign it, and then a surge sells to everyone as before 0.19.
+   */
+  function surgeChallenge() {
+    if (!secret) return null;
+    if (o.challenge) return o.challenge;
+    return { cookie: 'pf_js', work: challengeWork(true), cssPath: null };
   }
 
   /**
