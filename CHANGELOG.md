@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.18.5 (2026-11-25)
+
+- **A mass-scrape surge no longer refuses people.** A browser that passed the challenge today reads during a surge and is not counted toward it; one that has not gets the challenge page (about a second, once a day per address) instead of the paywall. JSON clients still get the x402 offer, an address past `perAddress` still pays, and without a secret a surge sells to everyone as before. Uses the site's own `challenge` settings when it has them, else a script with 16 bits of proof of work. Seen on saasrow 2026-11-25: every visitor, in every browser, was asked to pay while the site was busy.
+
 ## 0.18.4 (2026-11-22)
 
 Sitemaps are always readable. `/sitemap.xml`, `/sitemap-<part>.xml`, `/sitemap_index.xml` (and `.xml.gz`)

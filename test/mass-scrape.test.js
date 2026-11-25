@@ -50,15 +50,30 @@ describe('massScrape gate', () => {
   it('reads free under the rate, then 402s everyone anonymous on the gated paths', async () => {
     const g = gw({ paths: ['/i/'], requests: 10, perAddress: false });
     for (let i = 0; i < 10; i++) assert.equal(await g.handle(req(`/i/${i}`)), null);
+    // A browser that has not proved itself is asked to (0.19), not sold a pass.
     const res = await g.handle(req('/i/11'));
     assert.equal(res.status, 402);
     assert.ok(res.headers.get('payment-required'));
     const body = await res.text();
-    assert.match(body, /being scraped in bulk/);
+    assert.match(body, /Checking your browser/);
     assert.doesNotMatch(body, /sign in/i);
     // A fresh address is refused too: the surge is site-wide.
     assert.equal((await g.handle(req('/i/12'))).status, 402);
     assert.equal(g.massScrapeState().on, true);
+  });
+
+  it('sells the pass during a surge when there is no secret to sign a challenge', async () => {
+    const g = createGateway({
+      siteUrl: 'https://example.test',
+      fetch: async () => new Response('{}'),
+      botQuota: false,
+      checkout: false,
+      massScrape: { paths: ['/i/'], requests: 1, perAddress: false },
+    });
+    await g.handle(req('/i/1'));
+    const res = await g.handle(req('/i/2'));
+    assert.equal(res.status, 402);
+    assert.match(await res.text(), /being scraped in bulk/);
   });
 
   it('leaves ungated paths alone during a surge', async () => {
